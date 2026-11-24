@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FileUp,
   MoreVertical,
@@ -132,7 +132,10 @@ function BoardRowMenu({
 
 export function HomeView() {
   const boards = useAppStore((s) => s.boards);
-  const query = useAppStore((s) => s.searchDraft);
+  const rawQuery = useAppStore((s) => s.searchDraft);
+  // поиск — тяжёлый линейный проход по всем карточкам; откладываем его в
+  // низкоприоритетный кадр, чтобы ввод не дёргался на больших листах
+  const query = useDeferredValue(rawQuery);
   const setQuery = useAppStore((s) => s.setSearchDraft);
   const backupOn = useAppStore((s) => s.backupOnExit);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -388,7 +391,7 @@ export function HomeView() {
               ИЩЕМ:
             </span>
             <input
-              value={query}
+              value={rawQuery}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
                 e.stopPropagation();

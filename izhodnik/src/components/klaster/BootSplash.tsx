@@ -125,7 +125,7 @@ const POOL: string[] = [
   'ПОДКЛЮЧАЕМ КЛАВИАТУРУ.',
   'СОХРАНЯЕМ ПРИРОДУ.',
 ];
-const TAIL: string[] = ['ЗАГРУЗКА ПРОДОЛЖАЕТСЯ.', 'ЖДИТЕ.'];
+const TAIL: string[] = ['ПОТЕРЯЛ ПАРОЛЬ?', 'УДАЛЯЙ DATA'];
 
 const FRAME_MS = 45;
 const REVEAL_EVERY = 2; // кадров на символ

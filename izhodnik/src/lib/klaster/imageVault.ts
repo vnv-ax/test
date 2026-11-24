@@ -24,6 +24,8 @@ const KEY_SALT = 'key-salt';
 
 const PBKDF2_ROUNDS = 210_000;
 const CACHE_LIMIT = 120; // расшифрованных картинок в памяти (штук)
+const THUMB_SUFFIX = '.t';
+const THUMB_SIDE = 512;
 
 type ImageRecord = { id: string; iv: number[]; data: ArrayBuffer; mime: string; createdAt: number };
 
@@ -32,6 +34,9 @@ let cryptoKey: CryptoKey | null = null;
 
 /** Расшифрованные картинки: ссылка → data:-URL. */
 const cache = new Map<string, string>();
+/** Миниатюры: ссылка → data:-URL (дешёвые, свой лимит не нужен). */
+const thumbCache = new Map<string, string>();
+const thumbPending = new Map<string, Promise<string | null>>();
 const pending = new Map<string, Promise<string | null>>();
 const listeners = new Set<(ref: string) => void>();
 
@@ -101,6 +106,7 @@ export async function setImageKeyFromPassword(pass: string): Promise<void> {
   );
   // новый ключ — старые расшифровки в памяти неактуальны
   cache.clear();
+  thumbCache.clear();
   pending.clear();
 }
 
@@ -148,11 +154,116 @@ export async function putImage(dataUrl: string): Promise<string> {
     const rec: ImageRecord = { id, iv: [...iv], data: enc, mime, createdAt: Date.now() };
     await tx(STORE_IMAGES, 'readwrite', (s) => s.put(rec));
     cache.set(ref, dataUrl);
+    // миниатюра — фоновая задача: её отсутствие не мешает основному потоку
+    void generateThumb(id, dataUrl);
     return ref;
   } catch {
     // хранилище недоступно — оставляем картинку внутри JSON, как раньше
     return dataUrl;
   }
+}
+
+/**
+ * Миниатюра для карточки: уменьшает картинку до THUMB_SIDE и кладёт в
+ * хранилище рядом с оригиналом (id с суффиксом THUMB_SUFFIX). Не бросает
+ * исключений — миниатюра необязательна, отрисовка переживёт её отсутствие.
+ */
+async function generateThumb(id: string, dataUrl: string): Promise<void> {
+  try {
+    if (thumbCache.has(IMAGE_REF_PREFIX + id)) return;
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.decoding = 'async';
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Не удалось прочитать изображение'));
+      el.src = dataUrl;
+    });
+    const nw = img.naturalWidth || img.width;
+    const nh = img.naturalHeight || img.height;
+    if (!nw || !nh) return;
+    const scale = Math.min(1, THUMB_SIDE / Math.max(nw, nh));
+    const w = Math.max(1, Math.round(nw * scale));
+    const h = Math.max(1, Math.round(nh * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, w, h);
+    const out = canvas.toDataURL('image/webp', 0.8);
+    const comma = out.indexOf(',');
+    const mime = out.slice(5, out.indexOf(';')) || 'image/png';
+    const bin = atob(out.slice(comma + 1));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const enc = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey!, bytes);
+    const rec: ImageRecord = { id: id + THUMB_SUFFIX, iv: [...iv], data: enc, mime, createdAt: Date.now() };
+    await tx(STORE_IMAGES, 'readwrite', (s) => s.put(rec));
+    thumbCache.set(IMAGE_REF_PREFIX + id, out);
+  } catch {
+    /* без миниатюры карта рисуется из полного битмапа */
+  }
+}
+
+/**
+ * Миниатюра по ссылке на картинку. Для картинок, положенных в хранилище до
+ * появления миниатюр, генерируется на лету при первом обращении.
+ * Обычная строка (data:-URL) проходит насквозь; null — ничего не вышло.
+ */
+export async function getThumb(ref: string): Promise<string | null> {
+  const hit = thumbCache.get(ref);
+  if (hit) return hit;
+  if (!isRef(ref) || !imageVaultActive()) return null;
+  const id = refId(ref);
+  const inflight = thumbPending.get(id);
+  if (inflight) return inflight;
+  const job = (async () => {
+    try {
+      const rec = await tx<ImageRecord | undefined>(STORE_IMAGES, 'readonly', (s) => s.get(id + THUMB_SUFFIX));
+      if (rec) {
+        const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(rec.iv) }, cryptoKey!, rec.data);
+        const url = bytesToDataUrl(new Uint8Array(plain), rec.mime || 'image/png');
+        thumbCache.set(ref, url);
+        return url;
+      }
+      // старая картинка без миниатюры — расшифровываем оригинал и делаем
+      const full = await getImage(ref);
+      if (!full) return null;
+      await generateThumb(id, full);
+      return thumbCache.get(ref) ?? null;
+    } catch {
+      return null;
+    } finally {
+      thumbPending.delete(id);
+    }
+  })();
+  thumbPending.set(id, job);
+  return job;
+}
+
+/**
+ * src для <img> на дальнем зуме: сначала миниатюра, пока не готова — полный
+ * битмап (чтобы карточка не мигала пустотой). Обычные строки — насквозь.
+ */
+export function useVaultThumb(src: string | undefined | null): string | undefined {
+  const full = useVaultImage(src);
+  const isThumbable = isRef(src ?? '');
+  const [thumb, setThumb] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isThumbable) return;
+    let alive = true;
+    void getThumb(src as string).then((url) => {
+      if (alive) setThumb(url);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [isThumbable, src]);
+  if (!isThumbable) return full;
+  return thumb ?? full;
 }
 
 /**
@@ -269,7 +380,10 @@ export async function pruneImages(referenced: Set<string>): Promise<void> {
       req.onsuccess = () => resolve(req.result as ImageRecord[]);
       req.onerror = () => reject(req.error ?? new Error('Ошибка хранилища картинок'));
     });
-    const stale = all.filter((r) => !referenced.has(IMAGE_REF_PREFIX + r.id));
+    // миниатюры (id с суффиксом) живут, пока жива их базовая картинка
+    const stale = all.filter(
+      (r) => !referenced.has(IMAGE_REF_PREFIX + r.id) && !referenced.has(IMAGE_REF_PREFIX + r.id.replace(/\.t$/, ''))
+    );
     if (!stale.length) return;
     const t = db.transaction(STORE_IMAGES, 'readwrite');
     const store = t.objectStore(STORE_IMAGES);

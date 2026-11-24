@@ -5,6 +5,31 @@ import { Hash, Link2 } from 'lucide-react';
 import { useAppStore } from '@/lib/klaster/store';
 import { focusCard } from './Canvas';
 
+/** Человекочитаемый текст карточки: JSON (tiptap) → склеенный текст, HTML → без тегов. */
+function plainTextOf(raw: string): string {
+  const t = raw ?? '';
+  if (/^\s*\{\s*"/.test(t) && t.includes('"type":"doc"')) {
+    try {
+      let doc: unknown = JSON.parse(t);
+      for (let i = 0; i < 2 && typeof doc === 'string'; i++) doc = JSON.parse(doc);
+      const parts: string[] = [];
+      const walk = (n: unknown) => {
+        if (!n || typeof n !== 'object') return;
+        const o = n as { type?: string; text?: string; content?: unknown[] };
+        if (o.type === 'text' && o.text) parts.push(o.text);
+        for (const c of o.content ?? []) walk(c);
+      };
+      walk(doc);
+      return parts.join('');
+    } catch { /* битый JSON — покажем как есть */ }
+  }
+  if (/^\s*<(p|div|h[1-6]|ul|ol|blockquote|pre|table|span)/i.test(t)) {
+    const d = new DOMParser().parseFromString(t, 'text/html');
+    return d.body.textContent || '';
+  }
+  return t;
+}
+
 // Нижняя инфо-панель: справа снизу, напротив масштаба.
 // Пока курсор на панели — не исчезает; ушёл — гаснет через 2 секунды.
 export function BottomInfoPanel() {
@@ -41,13 +66,14 @@ export function BottomInfoPanel() {
           const tailOk = after < 0 || after >= text.length || !/[A-Za-zА-Яа-яЁё0-9_/\-]/.test(text[after]);
           const inText = ti !== -1 && boundaryOk && tailOk;
           if (!inTags && !inText) continue;
+          const human = plainTextOf(text);
           const label =
             c.data.kind === 'todo'
               ? c.data.title || c.data.items[0]?.text || 'Список'
-              : text
-                ? text.split('\n')[0].slice(0, 40)
+              : human
+                ? human.split('\n')[0].slice(0, 40)
                 : cardLabelOf(c);
-          const snippetLine = text ? (text.split('\n').find((l) => l.includes(marker)) || '').trim().slice(0, 60) : '';
+          const snippetLine = human ? (human.split('\n').find((l) => l.includes(marker)) || '').trim().slice(0, 60) : '';
           out.push({ boardId, cardId: c.id, label: label || 'Блок', snippet: snippetLine || 'тег ' + marker });
         }
       }
@@ -66,11 +92,12 @@ export function BottomInfoPanel() {
         const text = c.data.text || '';
         const i = text.indexOf(marker);
         if (i !== -1) {
+          const human = plainTextOf(text);
           out.push({
             boardId,
             cardId: c.id,
-            label: text.slice(0, 42).replace(/\n/g, ' ').trim() || '(без текста)',
-            snippet: text.slice(Math.max(0, i - 50), i).replace(/\n/g, ' ').trim(),
+            label: human.slice(0, 42).replace(/\n/g, ' ').trim() || '(без текста)',
+            snippet: human.slice(0, 60).replace(/\n/g, ' ').trim(),
           });
         }
       }

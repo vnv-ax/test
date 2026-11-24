@@ -19,6 +19,7 @@ import {
   Check,
   ChevronDown,
   Clock,
+  Copy,
   GripHorizontal,
   ImagePlus,
   Link2,
@@ -58,7 +59,7 @@ import type { ItemRepeat } from '@/lib/klaster/types';
 import { NOTE_LABELS } from '@/lib/klaster/theme';
 import { useNotePalette, notePaletteWithMix } from '@/lib/klaster/useNotePalette';
 import { applyImageFilter, IMAGE_FILTERS } from '@/lib/klaster/filters';
-import { getImage, putImage, useVaultImage } from '@/lib/klaster/imageVault';
+import { getImage, putImage, useVaultImage, useVaultThumb } from '@/lib/klaster/imageVault';
 import { MAX_PHOTO_BYTES, MAX_PHOTO_SIDE, optimizeImageDataUrl } from '@/lib/klaster/imageData';
 import type { ImageFilterId } from '@/lib/klaster/types';
 import type { ThemeId } from '@/lib/klaster/theme';
@@ -93,6 +94,112 @@ function captureAltSelection(boardId: string, targetCardId: string) {
   }
 }
 
+/** Вставка ссылки на блок в контент любого формата хранения.
+ *  JSON (tiptap) → link mark на найденный текст; HTML → <a>; простой текст → markdown.
+ *  Возвращает новый текст или null, если метка не найдена. */
+function insertBlockLink(raw: string, label: string, targetId: string): string | null {
+  const href = `#block:${targetId}`;
+  if (isJsonContent(raw)) {
+    try {
+      const doc = JSON.parse(unwrapStoredJson(raw));
+      const patched = insertLinkMarkInDoc(doc, label, href);
+      return patched ? JSON.stringify(patched) : null;
+    } catch {
+      return null;
+    }
+  }
+  if (isHtmlContent(raw)) return insertLinkIntoHtml(raw, label, href);
+  if (raw.includes(label)) return raw.replace(label, `[${label}](${href})`);
+  return null;
+}
+
+interface PmNode {
+  type: string;
+  text?: string;
+  marks?: { type: string; attrs?: Record<string, unknown> }[];
+  content?: PmNode[];
+  __start?: number;
+}
+
+/** Прямо в ProseMirror JSON: оборачивает первое вхождение label (даже
+ *  разрезанное между текстовыми узлами) в link mark, сохраняя остальные mark. */
+function insertLinkMarkInDoc(doc: unknown, label: string, href: string): unknown | null {
+  if (!doc || typeof doc !== 'object') return null;
+  const root = structuredClone(doc) as PmNode;
+  // 1) ищем вхождение в склеенном тексте всех text-узлов
+  let flat = '';
+  const walkFlat = (n: PmNode) => {
+    if (n.type === 'text') { n.__start = flat.length; flat += n.text ?? ''; return; }
+    for (const c of n.content ?? []) walkFlat(c);
+  };
+  walkFlat(root);
+  const idx = flat.indexOf(label);
+  if (idx === -1) return null;
+  const end = idx + label.length;
+  // 2) перестраиваем дерево: каждый text-узел, попавший в диапазон, режем на части
+  let changed = false;
+  const transform = (n: PmNode): PmNode | PmNode[] => {
+    if (n.type === 'text') {
+      const s = n.text ?? '';
+      const st = n.__start ?? 0;
+      if (st + s.length <= idx || st >= end) return n;
+      changed = true;
+      const a = Math.max(idx, st) - st;
+      const b = Math.min(end, st + s.length) - st;
+      const parts: PmNode[] = [];
+      if (a > 0) parts.push({ type: 'text', text: s.slice(0, a), marks: n.marks });
+      const marks = [...(n.marks ?? [])];
+      if (!marks.some((m) => m.type === 'link')) marks.push({ type: 'link', attrs: { href } });
+      parts.push({ type: 'text', text: s.slice(a, b), marks });
+      if (b < s.length) parts.push({ type: 'text', text: s.slice(b), marks: n.marks });
+      return parts;
+    }
+    if (n.content) {
+      const content: PmNode[] = [];
+      for (const c of n.content) {
+        const r = transform(c);
+        if (Array.isArray(r)) content.push(...r);
+        else content.push(r);
+      }
+      return { ...n, content };
+    }
+    return n;
+  };
+  const out = transform(root) as PmNode;
+  const clean = (n: unknown): unknown => {
+    if (!n || typeof n !== 'object') return n;
+    const o = n as Record<string, unknown>;
+    delete o.__start;
+    for (const v of Object.values(o)) if (v && typeof v === 'object') clean(v);
+    return o;
+  };
+  return changed ? clean(out) : null;
+}
+
+/** Ссылка в HTML-контенте: первый текстовый узел с меткой режем и оборачиваем в <a>. */
+function insertLinkIntoHtml(html: string, label: string, href: string): string | null {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  let node: Text | null;
+  while ((node = walker.nextNode() as Text | null)) {
+    const s = node.nodeValue ?? '';
+    const i = s.indexOf(label);
+    if (i === -1) continue;
+    const a = doc.createElement('a');
+    a.setAttribute('href', href);
+    a.textContent = label;
+    const parent = node.parentNode;
+    if (!parent) return null;
+    parent.insertBefore(doc.createTextNode(s.slice(0, i)), node);
+    parent.insertBefore(a, node);
+    if (i + label.length < s.length) parent.insertBefore(doc.createTextNode(s.slice(i + label.length)), node);
+    parent.removeChild(node);
+    return doc.body.innerHTML;
+  }
+  return null;
+}
+
 function starPoints(cx: number, cy: number, outer: number, inner: number, spikes: number): string {
   const pts: string[] = [];
   for (let i = 0; i < spikes * 2; i++) {
@@ -125,8 +232,6 @@ interface DragSession {
   lastX: number;
   lastY: number;
   moved: boolean;
-  /** Ctrl/⌘-перенос: продублировать карточки при первом движении */
-  copyPending?: boolean;
 }
 
 let session: DragSession | null = null;
@@ -424,11 +529,6 @@ function processSessionMove(e: PointerEvent) {
     s.moved = true;
     st.pushHistory();
     setCardsDragging(true);
-    if (s.copyPending && s.mode === 'top') {
-      st.duplicateCards(s.ids);
-      s.ids = st.selection;
-      s.cardId = s.ids.includes(s.cardId) ? s.cardId : s.ids[0] ?? s.cardId;
-    }
     st.setDragging(true);
     if (s.mode === 'top') st.bringToFront(s.cardId);
     s.lastX = e.clientX;
@@ -525,7 +625,6 @@ function startTopDrag(e: React.PointerEvent, cardId: string, locked: boolean) {
 
   if (locked) return;
 
-  // Ctrl/⌘ + перенос — копирование: копии дублируются при первом движении
   session = {
     mode: 'top',
     ids: ids.includes(cardId) ? ids : [cardId],
@@ -535,7 +634,6 @@ function startTopDrag(e: React.PointerEvent, cardId: string, locked: boolean) {
     lastX: e.clientX,
     lastY: e.clientY,
     moved: false,
-    copyPending: !e.shiftKey && !!(e.ctrlKey || e.metaKey),
   };
   window.addEventListener('pointermove', onSessionMove);
   window.addEventListener('pointerup', onSessionUp);
@@ -1067,7 +1165,21 @@ function MarkdownView({ text, boardId }: { text: string; boardId?: string }) {
                 </a>
               );
             }
-            return <a {...props} href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+            // внешние ссылки — как и везде: через вопрос «Переходим по ссылке?» и
+            // мост обёртки (в обёртке новые окна заблокированы, target=_blank не работает)
+            return (
+              <a
+                {...props}
+                href={href}
+                onClick={(e) => {
+                  if (!href) return;
+                  e.preventDefault();
+                  openLinkAfterConfirm(href);
+                }}
+              >
+                {children}
+              </a>
+            );
           },
         }}
       >
@@ -2175,7 +2287,23 @@ interface CardViewProps {
 function CardViewInner({ cardId, boardId }: CardViewProps) {
   const card = useAppStore((s) => s.boards[boardId]?.cards.find((c) => c.id === cardId));
   // src картинки из отдельного зашифрованного хранилища (в карточке — ссылка)
-  const vaultImageSrc = useVaultImage(card && card.data.kind === 'image' ? card.data.src : undefined);
+  // Уровень детализации: на дальнем зуме рисуем миниатюру (512px), ближе —
+  // полный битмап. Пороги с гистерезисом, чтобы картинка не мигала на границе.
+  // Подписка мимо React: зум меняется на каждый кадр — ре-рендерить все
+  // карточки на это нельзя, переключение происходит только на порогах.
+  const lodSrc = card && card.data.kind === 'image' ? card.data.src : undefined;
+  const [useFullBitmap, setUseFullBitmap] = useState(false);
+  useEffect(() => {
+    const apply = (z: number) => {
+      if (z > 0.7) setUseFullBitmap(true);
+      else if (z < 0.6) setUseFullBitmap(false);
+    };
+    apply(useAppStore.getState().viewports[boardId]?.zoom ?? 1);
+    return useAppStore.subscribe((s) => apply(s.viewports[boardId]?.zoom ?? 1));
+  }, [boardId]);
+  const lodFull = useVaultImage(useFullBitmap ? lodSrc : undefined);
+  const lodThumb = useVaultThumb(useFullBitmap ? undefined : lodSrc);
+  const imageSrc = useFullBitmap ? lodFull : lodThumb;
   const selected = useAppStore((s) => s.selection.includes(cardId));
   // Был ли блок единственным выделенным ещё до нажатия мыши (для «клик — правка»)
   const wasSelectedOnDown = useRef(false);
@@ -2403,12 +2531,12 @@ function CardViewInner({ cardId, boardId }: CardViewProps) {
     if (altLabel && altSourceId) {
       const source = st.boards[boardId]?.cards.find((c) => c.id === altSourceId);
       if (source && altSourceId !== targetCardId && (source.data.kind === 'note' || source.data.kind === 'text')) {
-        const text = (source.data as { text?: string }).text ?? '';
-        if (text.includes(altLabel)) {
+        const next = insertBlockLink((source.data as { text?: string }).text ?? '', altLabel, targetCardId);
+        if (next !== null) {
           st.pushHistory();
           st.updateCardData(altSourceId, {
             kind: source.data.kind,
-            text: text.replace(altLabel, `[${altLabel}](#block:${targetCardId})`),
+            text: next,
           } as never);
           toast({ title: 'Ссылка вставлена' });
           return;
@@ -2556,9 +2684,11 @@ function CardViewInner({ cardId, boardId }: CardViewProps) {
         const baseSrc = await getImage(baseRef);
         if (!baseSrc) throw new Error('нет картинки');
         const out = await applyImageFilter(baseSrc, id);
+        // фильтр снимает PNG (может выйти на мегабайты) — дожимаем до обычного бюджета
+        const squeezed = await optimizeImageDataUrl(out);
         useAppStore.getState().updateCardData(cardId, {
           kind: 'image',
-          src: await putImage(out),
+          src: await putImage(squeezed),
           alt: d.alt,
           // Оригинал нужен, чтобы можно было переключить/сбросить фильтр.
           srcOriginal: await putImage(baseSrc),
@@ -2882,9 +3012,9 @@ function CardViewInner({ cardId, boardId }: CardViewProps) {
     );
   } else if (card.type === 'image') {
     const d = card.data as Extract<Card['data'], { kind: 'image' }>;
-    inner = vaultImageSrc ? (
+    inner = imageSrc ? (
       <div className="group/img relative h-full w-full overflow-hidden" style={{ background: 'var(--hover-bg)', borderRadius: 'var(--radius-card)' }}>
-        <img src={vaultImageSrc} alt={d.alt || 'Изображение'} loading="lazy" decoding="async" className="h-full w-full object-cover" draggable={false} />
+        <img src={imageSrc} alt={d.alt || 'Изображение'} loading="lazy" decoding="async" className="h-full w-full object-cover" draggable={false} />
         {hovered || selected ? (
           <div
             data-nodrag
@@ -3733,7 +3863,7 @@ function CatalogBody({
   return (
     <div
       data-catalog-body={cardId}
-      className="flex w-full flex-1 flex-col p-[10px]"
+      className="relative flex w-full flex-1 flex-col p-[10px]"
       style={{
         background: 'var(--card-bg)',
         border: '1px solid var(--card-border)',
@@ -3773,32 +3903,6 @@ function CatalogBody({
         })}
         <button
           data-nodrag
-          aria-label="Скопировать ссылки текстом"
-          title="Скопировать ссылки текстом"
-          className="ml-auto rounded-full px-2 py-[2px] transition-colors"
-          style={{
-            fontSize: 10.5,
-            lineHeight: 1.4,
-            fontWeight: 400,
-            background: 'var(--chip-bg)',
-            color: 'var(--text-muted)',
-            border: '1px solid var(--chip-border)',
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            const text = [d.title || 'Каталог', ...d.links.map((l) => (l.title ? l.title + ' — ' : '') + l.url)].join('\n');
-            void navigator.clipboard
-              ?.writeText(text)
-              .then(() => toast({ title: 'Ссылки скопированы' }))
-              .catch(() => {});
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-          onDoubleClick={(e) => e.stopPropagation()}
-        >
-          КОПИЯ
-        </button>
-        <button
-          data-nodrag
           aria-label="Расположить по алфавиту"
           title="По алфавиту: сначала русский, потом латиница"
           className="ml-auto rounded-full px-2 py-[2px] transition-colors"
@@ -3820,6 +3924,23 @@ function CatalogBody({
           А-Я
         </button>
       </div>
+
+      {/* копия всего каталога текстом — крошечный значок, без подсказок */}
+      <button
+        data-nodrag
+        aria-label="Скопировать ссылки текстом"
+        className="absolute flex items-center justify-center rounded transition-colors"
+        style={{ right: 3, bottom: 3, width: 18, height: 18, color: 'var(--text-muted)', opacity: 0.55 }}
+        onClick={(e) => {
+          e.stopPropagation();
+          const text = [d.title || 'Каталог', ...d.links.map((l) => (l.title ? l.title + ' — ' : '') + l.url)].join('\n');
+          void navigator.clipboard?.writeText(text).catch(() => {});
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
+        <Copy size={11} strokeWidth={1.8} />
+      </button>
 
       {}
       <input

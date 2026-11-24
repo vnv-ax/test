@@ -72,6 +72,14 @@ function startSaveLoop(get: () => AppState) {
     saveDirty = false;
     saveToStorage(get());
   }, SAVE_INTERVAL_MS);
+  // beforeunload не всегда срабатывает в WebView (сворачивание, смена вкладки,
+  // срыв процесса) — страховка: прячем окно, значит пишем то, что накопилось.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && saveDirty) {
+      saveDirty = false;
+      saveToStorage(get());
+    }
+  });
 }
 
 let quotaWarned = false;

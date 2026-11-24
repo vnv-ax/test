@@ -1,0 +1,49 @@
+2026-11-24 00:11:08.401: [INFO] CurrentProfilePath: C:\AI\Z\runtime-data\EBWebView\Default
+2026-11-24 00:11:08.401: [INFO] Profiles total count: 1
+2026-11-24 00:11:08.401: [INFO] Profile: name=Профиль 1 path=C:\AI\Z\runtime-data\EBWebView\Default lastActive=null
+2026-11-24 00:11:08.401: [INFO] LastUsedProfileDir: C:\AI\Z\runtime-data\EBWebView\Default
+2026-11-24 00:11:08.401: [INFO] OnDoneLoading sync enabled: 0
+2026-11-24 00:11:08.401: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-11-24 00:11:08.401: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-11-24 00:11:08.401: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-11-24 00:11:23.748: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-11-24 08:38:56.330: [INFO] CurrentProfilePath: C:\AI\Z\runtime-data\EBWebView\Default
+2026-11-24 08:38:56.330: [INFO] Profiles total count: 1
+2026-11-24 08:38:56.330: [INFO] Profile: name=Профиль 1 path=C:\AI\Z\runtime-data\EBWebView\Default lastActive=2026-11-24T00:11:08.572Z
+2026-11-24 08:38:56.330: [INFO] LastUsedProfileDir: C:\AI\Z\runtime-data\EBWebView\Default
+2026-11-24 08:38:56.330: [INFO] MostRecentlyActiveProfile: name=Профиль 1 path=C:\AI\Z\runtime-data\EBWebView\Default lastActive=2026-11-24T00:11:08.572Z
+2026-11-24 08:38:56.330: [INFO] OnDoneLoading sync enabled: 0
+2026-11-24 08:38:56.330: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-11-24 08:38:56.330: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-11-24 08:38:56.330: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-11-24 08:39:11.264: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-11-24 08:56:11.329: [INFO] CurrentProfilePath: C:\AI\Z\runtime-data\EBWebView\Default
+2026-11-24 08:56:11.329: [INFO] Profiles total count: 1
+2026-11-24 08:56:11.329: [INFO] Profile: name=Профиль 1 path=C:\AI\Z\runtime-data\EBWebView\Default lastActive=2026-11-24T08:38:56.475Z
+2026-11-24 08:56:11.329: [INFO] LastUsedProfileDir: C:\AI\Z\runtime-data\EBWebView\Default
+2026-11-24 08:56:11.329: [INFO] MostRecentlyActiveProfile: name=Профиль 1 path=C:\AI\Z\runtime-data\EBWebView\Default lastActive=2026-11-24T08:38:56.475Z
+2026-11-24 08:56:11.329: [INFO] OnDoneLoading sync enabled: 0
+2026-11-24 08:56:11.329: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-11-24 08:56:11.329: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-11-24 08:56:11.329: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-11-24 09:02:23.090: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-11-24 09:35:45.435: [INFO] CurrentProfilePath: C:\AI\Z\runtime-data\EBWebView\Default
+2026-11-24 09:35:45.435: [INFO] Profiles total count: 1
+2026-11-24 09:35:45.435: [INFO] Profile: name=Профиль 1 path=C:\AI\Z\runtime-data\EBWebView\Default lastActive=2026-11-24T08:56:11.446Z
+2026-11-24 09:35:45.435: [INFO] LastUsedProfileDir: C:\AI\Z\runtime-data\EBWebView\Default
+2026-11-24 09:35:45.435: [INFO] MostRecentlyActiveProfile: name=Профиль 1 path=C:\AI\Z\runtime-data\EBWebView\Default lastActive=2026-11-24T08:56:11.446Z
+2026-11-24 09:35:45.435: [INFO] OnDoneLoading sync enabled: 0
+2026-11-24 09:35:45.435: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-11-24 09:35:45.435: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-11-24 09:35:45.435: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-11-24 09:36:48.267: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-11-24 09:38:36.470: [INFO] CurrentProfilePath: C:\AI\Z\runtime-data\EBWebView\Default
+2026-11-24 09:38:36.470: [INFO] Profiles total count: 1
+2026-11-24 09:38:36.470: [INFO] Profile: name=Профиль 1 path=C:\AI\Z\runtime-data\EBWebView\Default lastActive=2026-11-24T09:36:09.517Z
+2026-11-24 09:38:36.470: [INFO] LastUsedProfileDir: C:\AI\Z\runtime-data\EBWebView\Default
+2026-11-24 09:38:36.470: [INFO] MostRecentlyActiveProfile: name=Профиль 1 path=C:\AI\Z\runtime-data\EBWebView\Default lastActive=2026-11-24T09:36:09.517Z
+2026-11-24 09:38:36.470: [INFO] OnDoneLoading sync enabled: 0
+2026-11-24 09:38:36.470: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-11-24 09:38:36.470: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-11-24 09:38:36.470: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-11-24 09:46:50.144: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
