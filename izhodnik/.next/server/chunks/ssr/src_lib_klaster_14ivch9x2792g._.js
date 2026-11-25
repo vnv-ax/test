@@ -1,3 +1,0 @@
-module.exports=[76972,a=>{a.v(b=>Promise.all(["server/chunks/ssr/src_lib_klaster_demo_ts_1eb0jpntq-61o._.js"].map(b=>a.l(b))).then(()=>b(25461)))},98942,a=>{"use strict";a.s(["hostAvailable",0,function(){return!1},"hostCall",0,function(a,b){return Promise.reject(Error("Обёртка недоступна"))}])},83043,a=>{a.v(a=>Promise.resolve().then(()=>a(98942)))}];
-
-//# sourceMappingURL=src_lib_klaster_14ivch9x2792g._.js.map

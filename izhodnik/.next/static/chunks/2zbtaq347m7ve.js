@@ -1,1 +1,0 @@
-(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,68576,e=>{"use strict";e.s(["createSeed",0,function(){return{boards:{},openBoardId:null}}])}]);
