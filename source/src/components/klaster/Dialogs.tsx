@@ -111,7 +111,21 @@ const SHORTCUTS: [string, string][] = [
   ['КОЛОНКА', 'КАРТОЧКУ НА ДРУГУЮ — ОБРАЗУЕТСЯ КОЛОНКА. ПРАВАЯ КНОПКА ПО КОЛОНКЕ — РАЗГРУППИРОВАТЬ.'],
   ['СОЕДИНЕНИЯ', 'ТОЧКА СБОКУ КАРТОЧКИ: ПОТЯНИ К ДРУГОЙ КАРТОЧКЕ — ПОЯВИТСЯ СОЕДИНЕНИЕ. ДВОЙНОЙ КЛИК ПО ЛИНИИ — ПОДПИСЬ. ДВОЙНОЙ КЛИК ПО ПОДПИСИ — РЕДАКТИРОВАТЬ. ПРАВАЯ КНОПКА ПО ЛИНИИ — СОЕДИНЕНИЕ: ЛИНИЯ ИЛИ СТРЕЛКИ, ВЫПРЯМИТЬ, УДАЛИТЬ'],
   ['ССЫЛКИ', 'ВЫДЕЛЕНИЕ ТЕКСТОМ + АЛЬТ + КЛИК НА БЛОК = ССЫЛКА НА БЛОК. КЛИК НА ССЫЛКУ С АЛЬТОМ = УДАЛЕНИЕ ССЫЛКИ. ВЫДЕЛЕНИЕ БЛОКА С АЛЬТОМ = КТО ССЫЛАЕТСЯ НА БЛОК?'],
-  ['ТЕКСТ', 'ЖИРНЫЙ — КОНТРОЛЬ+И. КУРСИВ — КОНТРОЛЬ+Ш. ПОДЧЁРКНУТЫЙ — КОНТРОЛЬ+Г. ЗАЧЁРКНУТЫЙ — КОНТРОЛЬ+ШИФТ+Ч. КОД — КОНТРОЛЬ+У. СПИСОК ЧЕРЕЗ ТОЧКИ — КОНТРОЛЬ+ШИФТ+8. ЗАГОЛОВОК — КОНТРОЛЬ+АЛЬТ+1, 2, 3. ЦИТАТА — КОНТРОЛЬ+ШИФТ+И. КЕГЛЬ БЛОКА — КОНТРОЛЬ+АЛЬТ+ПЛЮС: КРУПНЕЕ. КОНТРОЛЬ+АЛЬТ+МИНУС: МЕЛЬЧЕ. КОНТРОЛЬ+АЛЬТ+0: ОБЫЧНЫЙ. ВЫДЕЛЕН ТЕКСТ — МЕНЯЕТСЯ ОН, БЕЗ ВЫДЕЛЕНИЯ — ВЕСЬ БЛОК.'],
+];
+
+// «ТЕКСТ» — не абзац, а список действий: каждая кнопка отдельной строкой.
+const TEXT_SHORTCUTS: [string, string][] = [
+  ['Жирный', 'Контроль + И'],
+  ['Курсив', 'Контроль + Ш'],
+  ['Подчёркнутый', 'Контроль + Г'],
+  ['Зачёркнутый', 'Контроль + Шифт + Ч'],
+  ['Код', 'Контроль + У'],
+  ['Список через точки', 'Контроль + Шифт + 8'],
+  ['Заголовок 1, 2, 3', 'Контроль + Альт + 1 / 2 / 3'],
+  ['Цитата', 'Контроль + Шифт + И'],
+  ['Кегль: крупнее', 'Контроль + Альт + Плюс'],
+  ['Кегль: мельче', 'Контроль + Альт + Минус'],
+  ['Кегль: обычный', 'Контроль + Альт + 0'],
 ];
 
 export function ShortcutsDialog() {
@@ -119,21 +133,35 @@ export function ShortcutsDialog() {
   const open = useAppStore((s) => s.shortcutsOpen);
   return (
     <Dialog open={open} onOpenChange={(v) => useAppStore.getState().setShortcutsOpen(v)}>
-      <DialogContent className="shortcuts-dialog max-w-[560px]" showCloseButton={false}>
+      <DialogContent
+        className="shortcuts-dialog max-w-[560px]"
+        overlayClassName="help-overlay"
+        showCloseButton={false}
+      >
         <DialogHeader>
           <DialogTitle>СПРАВКА</DialogTitle>
         </DialogHeader>
-        <div className="max-h-[440px] overflow-y-auto pr-1">
+        <div className="help-scroll">
           {SHORTCUTS.map(([k, v]) => (
-            <div key={k} className="border-b border-[var(--panel-border)] py-2.5 last:border-0">
-              <div className="text-[12px] font-bold uppercase tracking-[0.08em]" style={{ color: 'var(--accent-strong)' }}>
-                {k}
-              </div>
-              <div className="pt-1 text-[12.5px] leading-relaxed" style={{ color: 'var(--text-main)' }}>
-                {v}
-              </div>
+            <div key={k} className="help-section">
+              <div className="help-title">{k}</div>
+              <div className="help-text">{v}</div>
             </div>
           ))}
+          <div className="help-section">
+            <div className="help-title">ТЕКСТ</div>
+            <div className="help-rows">
+              {TEXT_SHORTCUTS.map(([action, keys]) => (
+                <div key={action} className="help-row">
+                  <span className="help-row-action">{action}</span>
+                  <span className="help-row-keys">{keys}</span>
+                </div>
+              ))}
+            </div>
+            <div className="help-note">
+              Выделен текст — меняется только он, без выделения — весь блок.
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

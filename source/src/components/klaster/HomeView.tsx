@@ -88,12 +88,15 @@ export function HomeView() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
   const menuBoard = menuId ? boards[menuId] : undefined;
-  // клик мимо меню листа закрывает его; нажатие на саму точку не трогаем —
-  // иначе повторный клик сначала закрывает меню, а потом тут же открывает снова
+  // клик мимо меню листа закрывает его; нажатие на саму точку и на кнопки
+  // самого меню не трогаем — иначе меню закрывается уже на pointerdown, кнопки
+  // успевают размонтироваться до клика и действие (переименовать, удалить…)
+  // не срабатывает вовсе
   useEffect(() => {
     if (!menuId) return;
     const close = (e: PointerEvent) => {
-      if ((e.target as HTMLElement)?.closest?.('[data-board-dot]')) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.('[data-board-dot]') || t?.closest?.('[data-sheet-menu]')) return;
       setMenuId(null);
     };
     document.addEventListener('pointerdown', close);
@@ -294,7 +297,11 @@ export function HomeView() {
             height: Math.round(25.5 * Math.max(menuZoom, 0.4)),
           }}
         >
-          <div className="flex min-w-0 flex-1 items-center" style={{ zoom: menuZoom }}>
+          <div
+            data-sheet-menu=""
+            className="flex min-w-0 flex-1 items-center"
+            style={{ zoom: menuZoom }}
+          >
           {menuBoard ? (
             <>
               {([
@@ -406,8 +413,8 @@ export function HomeView() {
           <AlertDialogHeader>
             <AlertDialogTitle>Удалить лист?</AlertDialogTitle>
             <AlertDialogDescription>
-              Лист «{deleteId ? boards[deleteId]?.title : ''}» и все вложенные в неё листы будут удалены
-              безвозвратно.
+              Лист «{deleteId ? boards[deleteId]?.title : ''}» и все вложенные в неё листы будут удалены.
+              До закрытия приложения удаление можно отменить: КОНТРОЛ+Z.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

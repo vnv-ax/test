@@ -52,17 +52,30 @@ export type { ThemeId };
 
 const STORAGE_KEY = 'klaster-app-v3';
 
-// Запись на диск раз в минуту (и обязательно при выходе): чаще и не нужно —
-// за минуту в блокноте ничего жизненно важного не теряется, зато диск, папка
-// копий и интерфейс живут спокойно. Каждое изменение только помечает данные
-// «грязными», а тайминтервал раз в минуту их сбрасывает. Это же чинит и
-// прежний баг: раньше сохранение откладывалось на 350 мс после КАЖДОГО
-// изменения, и пока пользователь редактировал без пауз (печатал, тащил,
-// рисовал) — запись не наступала вовсе, и сбой приложения терял всё сессию.
+// Запись на диск раз в минуту (и обязательно при выходе). Каждое изменение
+// только помечает данные «грязными», таймер раз в минуту их сбрасывает; при
+// скрытии окна и при выходе пишем сразу — с экраном «СОХРАНЕНИЕ».
 const SAVE_INTERVAL_MS = 60_000;
 
 let saveDirty = false;
 let saveLoopStarted = false;
+
+/** Экран «СОХРАНЕНИЕ» на время записи при выходе. */
+function showSavingScreen() {
+  try {
+    if (document.getElementById('zame-saving')) return;
+    const d = document.createElement('div');
+    d.id = 'zame-saving';
+    d.style.cssText =
+      'position:fixed;inset:0;z-index:99999;background:#060607;color:#e8e8ea;' +
+      'display:flex;align-items:center;justify-content:center;' +
+      'font:600 22px/1 sans-serif;letter-spacing:.3em;text-indent:.3em';
+    d.textContent = 'СОХРАНЕНИЕ';
+    document.body.appendChild(d);
+  } catch {
+    // экран — украшение, сохранение важнее
+  }
+}
 
 function startSaveLoop(get: () => AppState) {
   if (saveLoopStarted) return;
@@ -70,16 +83,38 @@ function startSaveLoop(get: () => AppState) {
   window.setInterval(() => {
     if (!saveDirty) return;
     saveDirty = false;
-    saveToStorage(get());
+    void saveToStorage(get());
   }, SAVE_INTERVAL_MS);
   // beforeunload не всегда срабатывает в WebView (сворачивание, смена вкладки,
   // срыв процесса) — страховка: прячем окно, значит пишем то, что накопилось.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && saveDirty) {
       saveDirty = false;
-      saveToStorage(get());
+      void saveToStorage(get());
     }
   });
+  // Обёртка вызывает это перед закрытием окна и ждёт сообщения «flushed»
+  // (ExecuteScriptAsync промисы не ждёт, поэтому о завершении сообщаем сами).
+  // Если есть несохранённое — сначала показываем экран «СОХРАНЕНИЕ».
+  (window as unknown as { __zameFlush?: () => Promise<unknown> }).__zameFlush = async () => {
+    try {
+      if (saveDirty) {
+        showSavingScreen();
+        flushSave(get);
+        await saveInFlight;
+      }
+    } catch {
+      // ошибка уже показана тостом и поставлена на повтор
+    }
+    try {
+      const wv = (window as unknown as { chrome?: { webview?: { postMessage?: (m: unknown) => void } } }).chrome;
+      // сообщение-объект: обёртка разбирает поля id/op (строку она не понимает)
+      wv?.webview?.postMessage?.({ id: -1, op: 'flushed' });
+    } catch {
+      // не в обёртке — сигнал не нужен
+    }
+    return 1;
+  };
 }
 
 let quotaWarned = false;
@@ -207,6 +242,9 @@ interface AppState {
   drawMode: boolean;
   drawCancelled: boolean;
   drawTool: DrawTool;
+  /** идёт запись данных на диск (обёртка шифрует и пишет; браузер — localStorage):
+   *  включает волну трёх точек в кнопке меню адресов и листов */
+  savingDisk: boolean;
 
   searchOpen: boolean;
   searchDraft: string;
@@ -366,7 +404,7 @@ type PersistShape = {
   calendarTasks?: CalendarTask[];
 };
 
-function saveToStorage(s: AppState) {
+function saveToStorage(s: AppState): Promise<void> {
   try {
     const payload: PersistShape = {
       boards: s.boards,
@@ -386,24 +424,38 @@ function saveToStorage(s: AppState) {
       // Обёртка шифрует и пишет в папку приложения — квот нет.
       // Оффлайн-очередь (по мотивам kinopio useApiStore): при сбое записи —
       // экспоненциальный retry с джиттером, до успешной записи.
-      hostCall('save', json)
+      // Флаг savingDisk включает волну трёх точек в меню адресов и листов.
+      useAppStore.setState({ savingDisk: true });
+      saveInFlight = hostCall('save', json)
         .then(() => {
           saveFailureCount = 0;
+          useAppStore.setState({ savingDisk: false });
         })
         .catch(() => {
+          useAppStore.setState({ savingDisk: false });
+          // данные не записаны — остаёмся «грязными», повтор и таймер, и минутный тик
+          saveDirty = true;
           saveFailureCount++;
           const delay = Math.min(30000, 2 ** saveFailureCount * 1000);
           const jitter = delay / 2 + Math.random() * (delay / 2);
           if (saveRetryTimer) clearTimeout(saveRetryTimer);
-          saveRetryTimer = setTimeout(() => saveToStorage(useAppStore.getState()), jitter);
+          saveRetryTimer = setTimeout(() => {
+            saveDirty = false;
+            void saveToStorage(useAppStore.getState());
+          }, jitter);
           toast({ title: 'Не удаётся записать данные — пробую ещё раз', description: 'Ничего не потеряется: повтор сохранения через пару секунд.' });
         });
-      return;
+      return saveInFlight;
     }
     localStorage.setItem(STORAGE_KEY, json);
     saveFailureCount = 0;
+    // В браузере запись мгновенная, но волну точек всё равно показываем —
+    // чтобы «...» одинаково сообщал о записи в любой версии.
+    useAppStore.setState({ savingDisk: true });
+    window.setTimeout(() => useAppStore.setState({ savingDisk: false }), 1200);
   } catch {
 
+    saveDirty = true;
     if (!quotaWarned) {
       quotaWarned = true;
       toast({
@@ -415,6 +467,8 @@ function saveToStorage(s: AppState) {
   }
 }
 
+/** Текущая запись в обёртку — выход из приложения ждёт её завершения. */
+let saveInFlight: Promise<void> = Promise.resolve();
 let saveFailureCount = 0;
 let saveRetryTimer: ReturnType<typeof setTimeout> | null = null;
 /**
@@ -430,7 +484,7 @@ function scheduleSave(get: () => AppState) {
 function flushSave(get: () => AppState) {
   if (!saveDirty) return;
   saveDirty = false;
-  saveToStorage(get());
+  void saveToStorage(get());
 }
 
 /**
@@ -828,6 +882,7 @@ export const useAppStore = create<AppState>()((set, get) => {
     drawMode: false,
     drawCancelled: false,
     drawTool: { width: DRAW_WIDTH, style: 'ink', color: null },
+    savingDisk: false,
     statusFilter: null,
     tagFilter: null,
     commentsOpenIds: [],
@@ -1120,6 +1175,8 @@ export const useAppStore = create<AppState>()((set, get) => {
     },
 
     deleteBoardTree: (boardId) => {
+      // удаление листа (с вложенными) — тоже шаг истории: КОНТРОЛ+Z вернёт всё
+      get().pushHistory();
       set((s) => {
         const ids = collectDescendants(s.boards, boardId);
         const boards = { ...s.boards };
@@ -1379,6 +1436,9 @@ export const useAppStore = create<AppState>()((set, get) => {
       const s = get();
       const board = s.boards[boardId];
       if (!board) return;
+      // удаление карточек — шаг истории: без него КОНТРОЛ+З возвращал только
+      // перемещения, а удалённые блоки терялись до конца сеанса
+      get().pushHistory();
       const idSet = new Set(expandWithChildren(s.boards, ids));
       mutBoard(boardId, (b) => {
 
@@ -1426,6 +1486,8 @@ export const useAppStore = create<AppState>()((set, get) => {
       const topIds = new Set(ids);
       const toCopy = board.cards.filter((c) => topIds.has(c.id));
       if (!toCopy.length) return;
+      // дубликат — тоже шаг истории (как добавление карточки)
+      get().pushHistory();
       const idMap = new Map<string, string>();
       for (const c of toCopy) {
         idMap.set(c.id, uid());

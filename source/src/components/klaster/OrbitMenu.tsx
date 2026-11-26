@@ -46,11 +46,17 @@ export function OrbitMenu({ x, y, items, onClose, chain = false, ariaLabel = 'М
 
   const n = Math.max(1, items.length);
 
-  // радиус орбиты: чуть растёт с числом пунктов, сжимается в маленьком окне
+  // Длина соединительных линий задаётся относительно высоты экрана, а не
+  // фиксированными пикселями: на большом мониторе меню не расползается,
+  // на маленьком — не сжимается до нечитаемого. База ~17% высоты (140–205px),
+  // плюс небольшой запас за каждый пункт сверх четырёх.
   const radius = useMemo(() => {
-    const base = 150 + Math.max(0, n - 1) * 18;
-    const cap = Math.min(window.innerWidth, window.innerHeight) / 2 - CORE_R - 70;
-    return Math.max(105, Math.min(base, Math.max(cap, 105)));
+    const vh = window.innerHeight;
+    const base = Math.min(205, Math.max(140, vh * 0.17));
+    const grow = Math.max(0, n - 4) * 10;
+    const capHeight = vh * 0.28;
+    const capScreen = Math.min(window.innerWidth, window.innerHeight) / 2 - CORE_R - 70;
+    return Math.max(100, Math.min(base + grow, capHeight, Math.max(capScreen, 100)));
   }, [n]);
 
   // углы пунктов: полный круг, начиная с верхней точки

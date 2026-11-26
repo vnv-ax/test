@@ -125,9 +125,23 @@ function WordButton({
 function AddressMenu() {
   const breadcrumb = useAppStore((s) => s.breadcrumb);
   const boards = useAppStore((s) => s.boards);
+  // запись данных на диск — точки «...» поочерёдно проявляются и гаснут
+  const savingDisk = useAppStore((s) => s.savingDisk);
+  const [pulse, setPulse] = useState(false);
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState({ x: 0, y: 0 });
   const st = useAppStore.getState();
+
+  // пока идёт запись — волна играет без пауз; когда запись кончилась, даём
+  // точкам доиграть волну до конца (иначе «...» обрывается на полпути)
+  useEffect(() => {
+    if (savingDisk) {
+      setPulse(true);
+      return;
+    }
+    const t = window.setTimeout(() => setPulse(false), 1500);
+    return () => window.clearTimeout(t);
+  }, [savingDisk]);
 
   // адрес листа — орбита по центру экрана, пункты цепочкой:
   // Главная → родитель → … → текущий (лист в листе — линия от родителя)
@@ -160,8 +174,13 @@ function AddressMenu() {
         aria-label="Адрес листа"
         aria-expanded={open}
         onClick={openOrbit}
+        title="Меню адресов и листов; во время записи данных на диск точки мигают"
       >
-        ...
+        <span className={'save-dots' + (pulse ? ' run' : '')} aria-hidden>
+          <i />
+          <i />
+          <i />
+        </span>
       </button>
       {open ? (
         <OrbitMenu

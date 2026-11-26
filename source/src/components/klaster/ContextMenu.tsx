@@ -302,12 +302,23 @@ export function ContextMenuHost() {
   };
 
   return (
-    <div
-      ref={ref}
-      className="ctx-menu fixed z-[80] rounded-lg border border-[var(--panel-border)] bg-[var(--panel-bg)] py-1 shadow-[var(--menu-shadow)]"
-      style={{ left: menu.x, top: menu.y, minWidth: 190, visibility: 'hidden' }}
-      onContextMenu={(e) => e.preventDefault()}
-    >
+    <>
+      {/* Затемнение и сильное размытие страницы: пункты меню должны читаться
+          на любом фоне. Клик мимо меню закрывает его. */}
+      <div
+        className="ctx-backdrop"
+        aria-hidden
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          st.openContextMenu(null);
+        }}
+      />
+      <div
+        ref={ref}
+        className="ctx-menu fixed z-[80] rounded-lg border border-[var(--panel-border)] bg-[var(--panel-bg)] py-1 shadow-[var(--menu-shadow)]"
+        style={{ left: menu.x, top: menu.y, minWidth: 190, visibility: 'hidden' }}
+        onContextMenu={(e) => e.preventDefault()}
+      >
       {colorable && noteCard ? (
         <div className="flex items-center gap-1.5 border-b border-[var(--panel-border)] px-3 pb-2 pt-1.5">
           {(NOTE_ORDER as NoteColor[]).map((color) => {
@@ -399,6 +410,7 @@ export function ContextMenuHost() {
             </button>
           )
         )}
-    </div>
+      </div>
+    </>
   );
 }
