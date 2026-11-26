@@ -1,0 +1,6 @@
+# Артефакты сборки — в git не нужны
+node_modules/
+.next/
+out/
+tsconfig.tsbuildinfo
+next-env.d.ts
