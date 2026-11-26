@@ -103,7 +103,7 @@ export const DEFAULT_THEME: ThemeId = 'tetrad';
 /** Кегль текста в блоках: множитель к базовому размеру (1 = обычный). */
 export const DEFAULT_CONTENT_SCALE = 1;
 export const CONTENT_SCALE_MIN = 0.85;
-export const CONTENT_SCALE_MAX = 1.6;
+export const CONTENT_SCALE_MAX = 2;
 
 export function clampContentScale(v: number): number {
   if (!Number.isFinite(v)) return DEFAULT_CONTENT_SCALE;
@@ -128,6 +128,8 @@ function applyFontToDom(font: FontId) {
 function applyContentScaleToDom(scale: number) {
   if (typeof document !== 'undefined') {
     document.documentElement.style.setProperty('--content-scale', String(scale));
+    // тот же множитель как zoom контейнера текста блоков (см. .kegl-zoom)
+    document.documentElement.style.setProperty('--kegl', String(scale));
   }
 }
 

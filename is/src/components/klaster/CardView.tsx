@@ -268,57 +268,6 @@ function removeLinkFromContent(raw: string, href: string, label: string): string
 /** Шаги кегля блока (как в прежней версии приложения). */
 const FONT_STEPS = [11, 12, 14, 16, 18, 22, 26, 32];
 
-/** Кегль блока — самый частый абсолютный размер текста в содержимом (px) или null. */
-function dominantFontSizeOf(raw: string): number | null {
-  if (!raw) return null;
-  const counts = new Map<number, number>();
-  const add = (px: number, chars: number) => {
-    if (!Number.isFinite(px) || px <= 0 || chars <= 0) return;
-    counts.set(px, (counts.get(px) ?? 0) + chars);
-  };
-  if (isJsonContent(raw)) {
-    try {
-      const doc = JSON.parse(unwrapStoredJson(raw)) as PmNode;
-      const walk = (n: PmNode) => {
-        if (n.type === 'text' && n.text) {
-          const style = (n.marks ?? []).find((m) => m.type === 'textStyle');
-          const px = parseFloat(String(style?.attrs?.fontSize ?? ''));
-          add(px, n.text.length);
-          return;
-        }
-        for (const c of n.content ?? []) walk(c);
-      };
-      walk(doc);
-    } catch {
-      return null;
-    }
-  } else if (isHtmlContent(raw)) {
-    try {
-      const doc = new DOMParser().parseFromString(raw, 'text/html');
-      const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
-      let node: Text | null;
-      while ((node = walker.nextNode() as Text | null)) {
-        let el: HTMLElement | null = node.parentElement;
-        let px = NaN;
-        while (el) {
-          const fs = parseFloat(el.style?.fontSize ?? '');
-          if (Number.isFinite(fs) && fs > 0) { px = fs; break; }
-          el = el.parentElement;
-        }
-        add(px, (node.nodeValue ?? '').length);
-      }
-    } catch {
-      return null;
-    }
-  }
-  let best: number | null = null;
-  let bestN = 0;
-  for (const [px, n] of counts) {
-    if (n > bestN) { bestN = n; best = px; }
-  }
-  return best;
-}
-
 // ---------- Вставка текста: форматирование принимает блок ----------
 
 /** Вставленный HTML чистим: остаются абзацы, переносы строк, списки и ссылки —
@@ -1161,7 +1110,9 @@ function legacyToHtml(s: string): string {
 
 /** Просмотр HTML-содержимого с кликабельными ссылками на блоки.
  *  Альт + клик по ссылке — убрать ссылку (текст остаётся). */
-function HtmlRichText({ html, boardId, onUnlink }: { html: string; boardId?: string; onUnlink?: (href: string, label: string) => void }) {
+/** pm — html получен из редактора (ProseMirror JSON): набираем тем же режимом
+ *  пробелов, что и редактор, иначе переносы строк в правке и просмотре расходятся. */
+function HtmlRichText({ html, boardId, onUnlink, pm }: { html: string; boardId?: string; onUnlink?: (href: string, label: string) => void; pm?: boolean }) {
   const onClick = (e: React.MouseEvent) => {
     const a = (e.target as HTMLElement).closest('a');
     if (!a) return;
@@ -1184,7 +1135,7 @@ function HtmlRichText({ html, boardId, onUnlink }: { html: string; boardId?: str
     }
   };
   return (
-    <div className="rte-view" onClick={onClick} onDoubleClick={(e) => e.stopPropagation()}>
+    <div className={pm ? 'rte-view rte-view-pm' : 'rte-view'} onClick={onClick} onDoubleClick={(e) => e.stopPropagation()}>
       <div dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   );
@@ -1221,19 +1172,12 @@ function dominantFontFromPmDoc(doc: EditorView['state']['doc']): number | null {
   return best;
 }
 
-/** Базовый размер редактора = кегль блока; пересчитываем на лету, чтобы
- *  правка всегда выглядела как просмотр (сбросили кегль — блок сразу «сжался»). */
-function syncEditorBaseKegl(view: EditorView) {
-  const dom = dominantFontFromPmDoc(view.state.doc);
-  const want = dom ? `${dom}px` : '';
-  if (view.dom.style.fontSize !== want) view.dom.style.fontSize = want;
-}
-
 /** Печать всегда идёт кеглем блока: если каретка стоит на месте без явного
  *  размера, подставляем в storedMarks самый частый размер содержимого.
- *  Именно это чинит «вернулся в блок — печатает мелким». */
+ *  Именно это чинит «вернулся в блок — печатает мелким».
+ *  Базу редактора не трогаем: она задана CSS, иначе кегль всего текста
+ *  меняется от того, где стоит каретка. */
 function applyBlockKegl(view: EditorView) {
-  syncEditorBaseKegl(view);
   const { state } = view;
   if (!state.selection.empty) return;
   const $pos = state.selection.$from;
@@ -1294,10 +1238,6 @@ function TiptapEditor({ cardId, kind, initial }: { cardId: string; kind: 'note' 
   const timerRef = useRef<number | null>(null);
   const commitRef = useRef<() => void>(() => {});
 
-  // Кегль блока на момент входа в правку: им печатают новый текст и он же —
-  // базовый размер редактора, чтобы правка выглядела как просмотр.
-  const blockKegl = useMemo(() => dominantFontSizeOf(initial), [initial]);
-
   const editor = useEditor(
     {
       // рендерим содержимое сразу при монтировании: иначе на кадр появляется
@@ -1329,7 +1269,6 @@ function TiptapEditor({ cardId, kind, initial }: { cardId: string; kind: 'note' 
           class: 'rte-content',
           'data-nodrag': 'true',
           spellcheck: 'true',
-          ...(blockKegl ? { style: `font-size: ${blockKegl}px;` } : {}),
         },
         handleKeyDown: (view, event) => {
           if (event.key === 'Escape') {
@@ -2685,13 +2624,6 @@ interface CardViewProps {
 
 function CardViewInner({ cardId, boardId }: CardViewProps) {
   const card = useAppStore((s) => s.boards[boardId]?.cards.find((c) => c.id === cardId));
-  // Кегль блока: самый частый размер текста в содержимом (для заметок и текста).
-  // Им печатают новый текст; вставленный текст принимает его же.
-  const cardKegl = useMemo(() => {
-    if (!card || (card.type !== 'note' && card.type !== 'text')) return null;
-    const raw = (card.data as { text?: string }).text ?? '';
-    return dominantFontSizeOf(raw);
-  }, [card]);
   // src картинки из отдельного зашифрованного хранилища (в карточке — ссылка)
   // Уровень детализации: на дальнем зуме рисуем миниатюру (512px), ближе —
   // полный битмап. Пороги с гистерезисом, чтобы картинка не мигала на границе.
@@ -3267,21 +3199,20 @@ function CardViewInner({ cardId, boardId }: CardViewProps) {
     const palette = notePaletteWithMix(theme, { cards: mixCards });
     const c = palette[d.color] ?? palette.yellow;
     const editing = editingId === cardId;
-    // кегль блока: если у блока свой размер текста — он и базовый
-    const keglStyle = cardKegl ? { fontSize: `${cardKegl}px` } : { fontSize: 'calc(14px * var(--content-scale))' };
     inner = (
       <div
         className="flex-1 w-full p-[16px] note-body"
         style={{ background: c.bg, border: `1px solid ${c.border}`, color: c.fg ?? 'var(--note-text, var(--text-main))', minHeight: 52, borderRadius: 'var(--radius-card)' }}
         onDoubleClick={onDoubleClick}
       >
+        <div className="kegl-zoom">
         {editing ? (
           <TiptapEditor cardId={cardId} kind="note" initial={d.text ?? ''} />
         ) : (
-          <div className="whitespace-pre-wrap break-words" style={{ ...keglStyle, lineHeight: 1.45 }}>
+          <div className="whitespace-pre-wrap break-words" style={{ fontSize: '14px', lineHeight: 1.45 }}>
             {d.text ? (
               isJsonContent(d.text) ? (
-                <HtmlRichText html={jsonToHtml(d.text) ?? ''} boardId={boardId} onUnlink={unlinkFromCard} />
+                <HtmlRichText html={jsonToHtml(d.text) ?? ''} boardId={boardId} onUnlink={unlinkFromCard} pm />
               ) : isHtmlContent(d.text) ? (
                 <HtmlRichText html={d.text} boardId={boardId} onUnlink={unlinkFromCard} />
               ) : (
@@ -3292,31 +3223,32 @@ function CardViewInner({ cardId, boardId }: CardViewProps) {
             )}
           </div>
         )}
+        </div>
       </div>
     );
   } else if (card.type === 'text') {
     const d = card.data as Extract<Card['data'], { kind: 'text' }>;
     const editing = editingId === cardId;
-    const keglStyle = cardKegl ? { fontSize: `${cardKegl}px` } : { fontSize: 'calc(14px * var(--content-scale))' };
     inner = (
       <div
         className="flex-1 w-full p-[16px]"
         style={{ background: 'var(--card-bg)', border: `1px solid var(--card-border)`, color: 'var(--text-main)', minHeight: 44, borderRadius: 'var(--radius-card)' }}
         onDoubleClick={onDoubleClick}
       >
+        <div className="kegl-zoom">
         {editing ? (
           <TiptapEditor cardId={cardId} kind="text" initial={d.text ?? ''} />
         ) : (
           <>
             {d.text ? (
               isJsonContent(d.text) ? (
-                <HtmlRichText html={jsonToHtml(d.text) ?? ''} boardId={boardId} onUnlink={unlinkFromCard} />
+                <HtmlRichText html={jsonToHtml(d.text) ?? ''} boardId={boardId} onUnlink={unlinkFromCard} pm />
               ) : isHtmlContent(d.text) ? (
                 <HtmlRichText html={d.text} boardId={boardId} onUnlink={unlinkFromCard} />
               ) : (
                 // типографика как в редакторе (rte-content): иначе строка
                 // съезжает при входе в набор текста
-                <div className="rte-view" style={{ ...keglStyle, lineHeight: 1.45 }}>
+                <div className="rte-view">
                   <MarkdownView text={d.text} boardId={boardId} onUnlink={unlinkFromCard} />
                 </div>
               )
@@ -3327,6 +3259,7 @@ function CardViewInner({ cardId, boardId }: CardViewProps) {
             )}
           </>
         )}
+        </div>
       </div>
     );
   } else if (card.type === 'shape') {

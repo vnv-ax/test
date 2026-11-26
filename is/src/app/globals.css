@@ -45,6 +45,7 @@
 
 :root {
   --content-scale: 1;
+  --kegl: 1;
   --radius: 0.625rem;
   --page-image: var(--canvas-image);
   --page-image-size: var(--canvas-image-size);
@@ -3031,7 +3032,7 @@ body.alt-mode .card-shell * { user-select: text; }
 .rte-content {
   outline: none;
   min-height: 1.4em;
-  font-size: calc(14px * var(--content-scale, 1));
+  font-size: 14px;
   line-height: 1.45;
   word-break: break-word;
   /* убираем все дефолтные margin/padding от ProseMirror */
@@ -3116,7 +3117,30 @@ body.alt-mode .card-shell * { user-select: text; }
   height: 0;
 }
 
+/* Кегль текста в блоках: база фиксированная (14px), настройка — множитель
+   через zoom. Так масштабируется всё: и обычный текст, и фрагменты с явным
+   размером, и заголовки. Правка и просмотр сидят в одном контейнере.
+   --content-scale обнуляем: внутренние правила с ним дали бы двойной масштаб. */
+.kegl-zoom {
+  zoom: var(--kegl, 1);
+  --content-scale: 1;
+}
+
 /* Просмотр HTML-текста карточки (вне режима правки) */
+.rte-view {
+  font-size: 14px;
+  line-height: 1.45;
+}
+/* карточка-статья типографику задаёт сама и вне zoom-контейнера */
+.article-body .rte-view {
+  font-size: inherit;
+  line-height: inherit;
+}
+/* содержимое из редактора: тот же режим пробелов (пробел в конце строки
+   занимает место), иначе переносы строк в правке и просмотре расходятся */
+.rte-view-pm {
+  white-space: break-spaces;
+}
 .rte-view p { margin: 0 0 4px; }
 .rte-view p:last-child { margin-bottom: 0; }
 .rte-view h1, .rte-view h2, .rte-view h3 { margin: 6px 0 4px; line-height: 1.25; }
