@@ -1,9 +1,0 @@
-2026-11-26 12:27:27.753: [INFO] CurrentProfilePath: C:\AI\Z\runtime-data\EBWebView\Default
-2026-11-26 12:27:27.753: [INFO] Profiles total count: 1
-2026-11-26 12:27:27.753: [INFO] Profile: name=Профиль 1 path=C:\AI\Z\runtime-data\EBWebView\Default lastActive=null
-2026-11-26 12:27:27.753: [INFO] LastUsedProfileDir: C:\AI\Z\runtime-data\EBWebView\Default
-2026-11-26 12:27:27.753: [INFO] OnDoneLoading sync enabled: 0
-2026-11-26 12:27:27.753: [INFO] BookmarkModelLoaded, ids_reassigned: 0
-2026-11-26 12:27:27.753: [INFO] BookmarksLoadDropped droppedNodes=0
-2026-11-26 12:27:27.753: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
-2026-11-26 12:30:21.791: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
