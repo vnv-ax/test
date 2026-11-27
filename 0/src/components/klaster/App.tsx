@@ -4,6 +4,7 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '@/lib/klaster/store';
 import { canvasHandle, clientToWorld } from '@/lib/klaster/canvasHandle';
+import { installParagraphDblClick } from '@/lib/klaster/dblSelect';
 import { HomeView } from './HomeView';
 import { BoardEditor } from './BoardEditor';
 import { ContextMenuHost } from './ContextMenu';
@@ -28,6 +29,9 @@ export default function App() {
   useEffect(() => {
     useAppStore.getState().load();
   }, []);
+
+  // двойной клик по тексту выделяет абзац, а не текст всех блоков на экране
+  useEffect(() => installParagraphDblClick(), []);
 
   // Alt — режим ссылок: при зажатом Alt текст в карточках выделяется (drag не тащит блоки)
   useEffect(() => {

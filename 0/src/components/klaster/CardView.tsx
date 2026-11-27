@@ -35,6 +35,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAppStore, findColumnOf } from '@/lib/klaster/store';
+import { dblBlockIndex } from '@/lib/klaster/dblSelect';
 import {
   cardDefaultSize,
   cardDisplayName,
@@ -1126,7 +1127,7 @@ const isJsonContent = (s: string) => {
 };
 
 /** Точка клика для постановки каретки при входе в правку (как в milanote) */
-let pendingCaret: { cardId: string; x: number; y: number } | null = null;
+let pendingCaret: { cardId: string; x: number; y: number; block?: number } | null = null;
 
 /** Старый простой текст → параграфы HTML для tiptap */
 function legacyToHtml(s: string): string {
@@ -1461,7 +1462,26 @@ function TiptapEditor({ cardId, kind, initial }: { cardId: string; kind: 'note' 
       if (pendingCaret && pendingCaret.cardId === cardId) {
         try {
           const pos = editor.view.posAtCoords({ left: pendingCaret.x, top: pendingCaret.y });
-          editor.commands.focus(pos?.pos ?? 'end');
+          // после двойного клика выделяем абзац под курсором: его номер известен
+          // из DOM, координаты после пересборки карточки уже ничего не значат
+          const { doc } = editor.state;
+          let blockSel: { from: number; to: number } | null = null;
+          if (pendingCaret.block !== undefined && doc.childCount > 0) {
+            const idx = Math.min(Math.max(0, pendingCaret.block), doc.childCount - 1);
+            let offset = 0;
+            for (let k = 0; k < idx; k++) offset += doc.child(k).nodeSize;
+            const node = doc.child(idx);
+            if (node.isTextblock) {
+              blockSel = { from: offset + 1, to: offset + 1 + node.content.size };
+            } else if (node.firstChild?.isTextblock) {
+              blockSel = { from: offset + 2, to: offset + 2 + node.firstChild.content.size };
+            }
+          }
+          if (blockSel) {
+            editor.chain().focus().setTextSelection(blockSel).run();
+          } else {
+            editor.commands.focus(pos?.pos ?? 'end');
+          }
         } catch {
           editor.commands.focus('end');
         }
@@ -3057,7 +3077,7 @@ function CardViewInner({ cardId, boardId }: CardViewProps) {
     if (st.dragging || st.editingId === cardId) return;
     if (wasSelectedOnDown.current) {
       e.stopPropagation();
-      pendingCaret = { cardId, x: e.clientX, y: e.clientY };
+      pendingCaret = { cardId, x: e.clientX, y: e.clientY, block: dblBlockIndex(cardId) ?? undefined };
       st.setEditing(cardId);
     }
   };
@@ -3068,7 +3088,7 @@ function CardViewInner({ cardId, boardId }: CardViewProps) {
     switch (card.type) {
       case 'note':
       case 'text':
-        pendingCaret = { cardId, x: e.clientX, y: e.clientY };
+        pendingCaret = { cardId, x: e.clientX, y: e.clientY, block: dblBlockIndex(cardId) ?? undefined };
         st.setEditing(cardId);
         break;
       case 'todo':
